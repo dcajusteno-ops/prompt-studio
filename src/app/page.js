@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, Copy, Edit2, Check, X, Image as ImageIcon, Trash2, AlertCircle, Folder, Plus, ChevronRight, FolderOpen, Settings2, MoveRight } from "lucide-react";
+import { Upload, Copy, Edit2, Check, X, Image as ImageIcon, Trash2, AlertCircle, Folder, Plus, ChevronRight, FolderOpen, Settings2, MoveRight, Eye, EyeOff, ShieldAlert, ShieldCheck, Download, UploadCloud } from "lucide-react";
 import Image from "next/image";
 
 export default function Home() {
@@ -15,6 +15,11 @@ export default function Home() {
   const [editPrompt, setEditPrompt] = useState("");
   const fileInputRef = useRef(null);
   const [copiedId, setCopiedId] = useState(null);
+
+  // NSFW Protection state
+  const [isNSFWProtected, setIsNSFWProtected] = useState(true);
+  const [revealedItems, setRevealedItems] = useState(new Set());
+  const [editRating, setEditRating] = useState("Safe");
 
   // Modals state
   const [toast, setToast] = useState(null);
@@ -30,10 +35,25 @@ export default function Home() {
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [batchMoveModal, setBatchMoveModal] = useState(false);
   const [batchDeleteModal, setBatchDeleteModal] = useState(false);
+  const [batchRatingModal, setBatchRatingModal] = useState(false);
+
+  // Settings state
+  const [settingsModal, setSettingsModal] = useState(false);
+  const [defaultUploadRating, setDefaultUploadRating] = useState("Safe");
+  const [importConfirmModal, setImportConfirmModal] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const archiveInputRef = useRef(null);
 
   useEffect(() => {
     Promise.all([fetchData(), fetchAlbums()]).finally(() => setLoading(false));
+    const savedDefaultRating = localStorage.getItem("defaultUploadRating");
+    if (savedDefaultRating) setDefaultUploadRating(savedDefaultRating);
   }, []);
+
+  const handleDefaultRatingChange = (rating) => {
+    setDefaultUploadRating(rating);
+    localStorage.setItem("defaultUploadRating", rating);
+  };
 
   const showToast = (message, type = "error") => {
     setToast({ message, type });
@@ -105,7 +125,8 @@ export default function Home() {
             url: file.url,
             filename: file.filename,
             originalName: file.originalName,
-            prompt: "", 
+            prompt: "",
+            rating: defaultUploadRating,
             albumId: targetAlbumId 
           }),
         });
@@ -120,6 +141,42 @@ export default function Home() {
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleExportArchive = () => {
+    window.open('/api/archive', '_blank');
+  };
+
+  const handleImportArchive = async (e) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    setImportConfirmModal(true);
+  };
+
+  const confirmImportArchive = async () => {
+    if (!archiveInputRef.current || !archiveInputRef.current.files || archiveInputRef.current.files.length === 0) return;
+    const file = archiveInputRef.current.files[0];
+    
+    setImporting(true);
+    setImportConfirmModal(false);
+    
+    const formData = new FormData();
+    formData.append("file", file);
+    
+    try {
+      const res = await fetch("/api/archive", {
+        method: "POST",
+        body: formData
+      });
+      if (!res.ok) throw new Error("Import failed");
+      
+      showToast("归档恢复成功！页面即将刷新", "success");
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err) {
+      showToast("归档恢复失败，文件可能已损坏");
+      setImporting(false);
+    } finally {
+      if (archiveInputRef.current) archiveInputRef.current.value = "";
     }
   };
 
@@ -142,7 +199,7 @@ export default function Home() {
   };
 
   const savePrompt = async (id) => {
-    const success = await handleUpdateItem(id, { prompt: editPrompt });
+    const success = await handleUpdateItem(id, { prompt: editPrompt, rating: editRating });
     if (success) {
       setEditingId(null);
       showToast("更新成功", "success");
@@ -244,6 +301,39 @@ export default function Home() {
       setSelectedItems(new Set());
     } catch (error) {
       showToast("部分记录删除失败，请刷新重试。");
+    }
+  };
+
+  const handleBatchRating = async (rating) => {
+    if (selectedItems.size === 0) return;
+    setBatchRatingModal(false);
+
+    try {
+      const updates = Array.from(selectedItems).map(id => ({ id, rating }));
+      
+      const res = await fetch("/api/data", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error("Batch rating failed");
+      
+      setItems((prev) => {
+        const next = [...prev];
+        updates.forEach(update => {
+          const idx = next.findIndex(item => item.id === update.id);
+          if (idx !== -1) {
+            next[idx] = { ...next[idx], ...update };
+          }
+        });
+        return next;
+      });
+      
+      showToast(`成功更新 ${selectedItems.size} 张图片分级为 ${rating}`, "success");
+      setIsBatchMode(false);
+      setSelectedItems(new Set());
+    } catch (error) {
+      showToast("分级更新失败，请重试。");
     }
   };
 
@@ -350,6 +440,29 @@ export default function Home() {
         </div>
       )}
 
+      {batchRatingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">设置 {selectedItems.size} 张图片的分级</h3>
+            <div className="max-h-64 overflow-y-auto mb-6 scrollbar-hide space-y-2">
+              {['Safe', 'R', 'X', 'XX', 'XXX'].map(rating => (
+                <button 
+                  key={rating} 
+                  className="w-full text-left px-4 py-3 rounded-xl bg-gray-50 hover:bg-orange-50 hover:text-orange-700 transition-colors font-medium border border-transparent hover:border-orange-100 flex items-center gap-3"
+                  onClick={() => handleBatchRating(rating)}
+                >
+                  <ShieldAlert className={`w-5 h-5 ${rating === 'Safe' ? 'text-green-500' : 'text-orange-400'}`} />
+                  {rating === 'Safe' ? 'Safe (全年龄)' : `${rating} (限制级)`}
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end">
+              <button onClick={() => setBatchRatingModal(false)} className="px-5 py-2.5 rounded-xl font-semibold text-gray-600 hover:bg-gray-100 transition-colors">取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deleteAlbumModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
@@ -387,6 +500,79 @@ export default function Home() {
         </div>
       )}
 
+      {settingsModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2"><Settings2 className="w-6 h-6 text-indigo-600" /> 系统设置</h3>
+            
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">图片默认上传分级</label>
+                <select 
+                  value={defaultUploadRating} 
+                  onChange={(e) => handleDefaultRatingChange(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-200 text-gray-700 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 font-medium transition-all"
+                >
+                  <option value="Safe">Safe (全年龄)</option>
+                  <option value="R">R (轻微限制)</option>
+                  <option value="X">X (成人级)</option>
+                  <option value="XX">XX (重度限制)</option>
+                  <option value="XXX">XXX (极度限制)</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-2">新上传的图片将自动应用此分级（开启保护模式时将被隐藏）。</p>
+              </div>
+
+              <div className="pt-6 border-t border-gray-100">
+                <label className="block text-sm font-semibold text-gray-700 mb-4">备份与恢复 (归档)</label>
+                <div className="flex flex-col gap-3">
+                  <button 
+                    onClick={handleExportArchive}
+                    className="w-full flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl px-4 py-3 font-semibold transition-colors"
+                  >
+                    <Download className="w-5 h-5" />
+                    导出完整归档 (.zip)
+                  </button>
+                  
+                  <input type="file" accept=".zip" className="hidden" ref={archiveInputRef} onChange={handleImportArchive} />
+                  <button 
+                    onClick={() => archiveInputRef.current?.click()}
+                    disabled={importing}
+                    className="w-full flex items-center justify-center gap-2 bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-700 rounded-xl px-4 py-3 font-semibold transition-colors disabled:opacity-50"
+                  >
+                    {importing ? <div className="w-5 h-5 rounded-full border-2 border-gray-300 border-t-gray-600 animate-spin" /> : <UploadCloud className="w-5 h-5" />}
+                    {importing ? "正在恢复..." : "导入归档文件 (.zip)"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end mt-8">
+              <button onClick={() => setSettingsModal(false)} className="px-6 py-2.5 rounded-xl font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors">完成</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {importConfirmModal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 rounded-full bg-red-100 text-red-500 flex items-center justify-center mb-6">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">危险操作警告</h3>
+            <p className="text-gray-500 text-sm mb-8 leading-relaxed">
+              你即将导入归档文件。<b>此操作将彻底覆盖并清空当前所有的画集、图片和配置数据</b>，且无法撤销！
+              <br /><br />
+              请确认上传的 zip 文件是 Prompt Studio 的有效归档包。确定要继续吗？
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => { setImportConfirmModal(false); if(archiveInputRef.current) archiveInputRef.current.value = ""; }} className="px-5 py-2.5 rounded-xl font-semibold text-gray-600 hover:bg-gray-100 transition-colors">取消</button>
+              <button onClick={confirmImportArchive} className="px-5 py-2.5 rounded-xl font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors shadow-sm shadow-red-200">确认覆盖并导入</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {previewImage && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-8 bg-gray-900/90 backdrop-blur-md animate-in fade-in duration-200" onClick={() => setPreviewImage(null)}>
           <button onClick={(e) => { e.stopPropagation(); setPreviewImage(null); }} className="absolute top-4 right-4 sm:top-8 sm:right-8 p-3 text-white/70 hover:text-white bg-black/20 hover:bg-black/40 rounded-full backdrop-blur-sm transition-all z-10">
@@ -413,6 +599,27 @@ export default function Home() {
           >
             <ImageIcon className="w-5 h-5" />
             全部图片
+          </button>
+          
+          <button 
+            onClick={() => setIsNSFWProtected(!isNSFWProtected)}
+            className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-medium transition-colors text-gray-600 hover:bg-gray-100"
+            title="开启/关闭限制级图片保护"
+          >
+            <div className="flex items-center gap-3">
+              {isNSFWProtected ? <ShieldCheck className="w-5 h-5 text-green-500" /> : <ShieldAlert className="w-5 h-5 text-orange-400" />}
+              保护模式
+            </div>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${isNSFWProtected ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{isNSFWProtected ? 'ON' : 'OFF'}</span>
+          </button>
+          
+          <button 
+            onClick={() => setSettingsModal(true)}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors text-gray-600 hover:bg-gray-100"
+            title="应用设置"
+          >
+            <Settings2 className="w-5 h-5" />
+            系统设置
           </button>
           
           <div className="pt-6 pb-2 px-2 text-xs font-semibold text-gray-400 uppercase tracking-wider flex justify-between items-center">
@@ -493,6 +700,14 @@ export default function Home() {
                     移动到...
                   </button>
                   <button
+                    onClick={() => setBatchRatingModal(true)}
+                    disabled={selectedItems.size === 0}
+                    className="flex items-center gap-2 rounded-full bg-orange-50 border border-orange-100 px-5 py-2.5 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    <ShieldAlert className="w-4 h-4" />
+                    设置分级
+                  </button>
+                  <button
                     onClick={() => setBatchDeleteModal(true)}
                     disabled={selectedItems.size === 0}
                     className="flex items-center gap-2 rounded-full bg-red-50 border border-red-100 px-5 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
@@ -567,11 +782,44 @@ export default function Home() {
                 >
                   {/* Image Section */}
                   <div className="relative aspect-square overflow-hidden bg-gray-100 cursor-pointer" onClick={(e) => {
-                    if (!isBatchMode) {
-                      setPreviewImage(item.url);
+                    if (isBatchMode) return;
+                    if (isNSFWProtected && item.rating && item.rating !== "Safe" && !revealedItems.has(item.id)) {
+                      e.stopPropagation();
+                      const newSet = new Set(revealedItems);
+                      newSet.add(item.id);
+                      setRevealedItems(newSet);
+                      return;
                     }
+                    setPreviewImage(item.url);
                   }}>
                     <Image src={item.url} alt={item.originalName} fill sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" className={`object-cover transition-transform duration-700 ${!isBatchMode && "group-hover:scale-105"} ${isBatchMode && isSelected ? "opacity-90" : ""}`} />
+                    
+                    {/* NSFW Mask */}
+                    {isNSFWProtected && item.rating && item.rating !== "Safe" && !revealedItems.has(item.id) && (
+                      <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-xl flex flex-col items-center justify-center text-white p-4 text-center z-20">
+                        <ShieldAlert className="w-8 h-8 mb-3 opacity-80 text-orange-400" />
+                        <span className="text-xs font-bold px-2 py-1 bg-black/40 rounded border border-white/10 mb-2">
+                          [ {item.rating} ] 限制级内容
+                        </span>
+                        <span className="text-sm font-medium opacity-80 flex items-center gap-1.5"><Eye className="w-4 h-4" /> 点击临时查看</span>
+                      </div>
+                    )}
+                    
+                    {/* Hide Again Button */}
+                    {isNSFWProtected && item.rating && item.rating !== "Safe" && revealedItems.has(item.id) && !isBatchMode && (
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const newSet = new Set(revealedItems);
+                          newSet.delete(item.id);
+                          setRevealedItems(newSet);
+                        }}
+                        className="absolute top-3 left-3 z-20 p-2 bg-black/40 hover:bg-black/60 text-white/90 hover:text-white rounded-full backdrop-blur-sm transition-all"
+                        title="重新隐藏"
+                      >
+                        <EyeOff className="w-4 h-4" />
+                      </button>
+                    )}
                     
                     {/* Batch Selection Overlay */}
                     {isBatchMode && (
@@ -636,9 +884,22 @@ export default function Home() {
                     {editingId === item.id ? (
                       <div className="flex-1 flex flex-col gap-3">
                         <textarea autoFocus className="w-full flex-1 min-h-[100px] p-3 rounded-xl border border-indigo-200 bg-indigo-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 resize-none scrollbar-hide" placeholder="输入画师提示词或备注..." value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} />
-                        <div className="flex justify-end gap-2">
-                          <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
-                          <button onClick={(e) => { e.stopPropagation(); savePrompt(item.id); }} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg flex items-center gap-1.5"><Check className="w-4 h-4" /> 保存</button>
+                        <div className="flex justify-between items-center">
+                          <select 
+                            value={editRating} 
+                            onChange={(e) => setEditRating(e.target.value)}
+                            className="text-xs bg-white border border-gray-200 text-gray-600 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-500 font-medium"
+                          >
+                            <option value="Safe">Safe (全年龄)</option>
+                            <option value="R">R (轻微限制)</option>
+                            <option value="X">X (成人级)</option>
+                            <option value="XX">XX (重度限制)</option>
+                            <option value="XXX">XXX (极度限制)</option>
+                          </select>
+                          <div className="flex justify-end gap-2">
+                            <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
+                            <button onClick={(e) => { e.stopPropagation(); savePrompt(item.id); }} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg flex items-center gap-1.5"><Check className="w-4 h-4" /> 保存</button>
+                          </div>
                         </div>
                       </div>
                     ) : (
@@ -646,7 +907,7 @@ export default function Home() {
                         <div className="flex justify-between items-start mb-2 group/prompt">
                           <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">提示词 / 备注</h4>
                           {!isBatchMode && (
-                            <button onClick={(e) => { e.stopPropagation(); setEditingId(item.id); setEditPrompt(item.prompt || ""); }} className="opacity-0 group-hover/prompt:opacity-100 p-1 text-gray-400 hover:text-indigo-600 transition-all"><Edit2 className="w-3.5 h-3.5" /></button>
+                            <button onClick={(e) => { e.stopPropagation(); setEditingId(item.id); setEditPrompt(item.prompt || ""); setEditRating(item.rating || "Safe"); }} className="opacity-0 group-hover/prompt:opacity-100 p-1 text-gray-400 hover:text-indigo-600 transition-all"><Edit2 className="w-3.5 h-3.5" /></button>
                           )}
                         </div>
                         {item.prompt ? (
