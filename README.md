@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Prompt Studio
 
-## Getting Started
+Prompt Studio 是一款专为创作者和 AI 绘画爱好者打造的**本地画集与提示词管理工具**。它提供了一个现代化的瀑布流卡片界面，帮助你轻松整理参考图并快速提取/复制相关的提示词。
 
-First, run the development server:
+## ✨ 核心特性
+
+- 🖼️ **现代瀑布流卡片设计**：舒适的响应式画廊体验，支持悬浮动效和高亮预览。
+- 📁 **多画集分类管理**：自由创建“我的画集”，将图片分门别类，支持图片在不同画集间的快速移动。
+- 📝 **提示词编辑与一键复制**：为每张图片绑定专属的 Prompt 提示词，点击即可一键复制到剪贴板，极大提高创作效率。
+- 📦 **强大的批量操作**：支持按住 Shift/Ctrl 进行多选，或者一键全选，实现批量删除、批量移动画集。
+- 🚀 **极简的本地存储**：所有数据及图片均安全地保存在本地 `database/` 和 `public/uploads/` 目录下。
+
+## 🚀 快速启动
+
+为方便日常使用，项目根目录提供了一个一键启动脚本：
+- **Windows**：双击运行根目录下的 `启动服务.bat` 即可自动打开浏览器并进入 `http://localhost:33333`。
+
+如果你想通过命令行启动：
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+打开浏览器访问 [http://localhost:33333](http://localhost:33333) 即可体验。
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## 🛠️ 技术栈
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- [Next.js 15+](https://nextjs.org/) - React 框架
+- [Tailwind CSS v4](https://tailwindcss.com/) - 样式系统
+- [Lucide React](https://lucide.dev/) - 精美的图标库
 
-## Learn More
+## 📁 目录结构简要
 
-To learn more about Next.js, take a look at the following resources:
+```text
+├── database/            # 本地 JSON 数据存储目录 (被 Git 忽略)
+├── public/
+│   └── uploads/         # 本地图片上传存储目录 (被 Git 忽略)
+├── src/
+│   └── app/             # 核心业务逻辑与 API 路由
+├── 启动服务.bat         # Windows 一键启动脚本
+└── package.json         # 项目配置与依赖
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 📜 许可证
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+本项目为个人效率工具，代码开源仅供学习参考。
