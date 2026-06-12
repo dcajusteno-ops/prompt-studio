@@ -117,6 +117,21 @@ export async function DELETE(request) {
     }
     
     let data = await readData();
+    
+    // Delete files from filesystem
+    const itemsToDelete = data.filter((item) => idsToDelete.includes(item.id));
+    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+    
+    for (const item of itemsToDelete) {
+      if (item.filename) {
+        try {
+          await fs.unlink(path.join(uploadsDir, item.filename));
+        } catch (e) {
+          console.error(`Failed to delete file ${item.filename}:`, e);
+        }
+      }
+    }
+    
     data = data.filter((item) => !idsToDelete.includes(item.id));
     await writeData(data);
     
