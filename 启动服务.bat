@@ -6,7 +6,7 @@ echo.
 
 IF NOT EXIST node_modules (
     echo Installing dependencies for the first time...
-    npm install
+    call npm install
     echo.
 )
 
@@ -16,5 +16,5 @@ echo.
 echo Opening http://localhost:33333 in your browser shortly...
 echo.
 start http://localhost:33333
-npm run dev
+call npm run dev
 pause
