@@ -64,7 +64,7 @@ export default function Home() {
     try {
       const res = await fetch("/api/albums");
       const data = await res.json();
-      setAlbums(data);
+      setAlbums(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Failed to fetch albums:", error);
       showToast("获取画集失败");
@@ -75,7 +75,7 @@ export default function Home() {
     try {
       const res = await fetch("/api/data");
       const data = await res.json();
-      setItems(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      setItems(Array.isArray(data) ? data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : []);
     } catch (error) {
       console.error("Failed to fetch data:", error);
       showToast("获取数据失败");

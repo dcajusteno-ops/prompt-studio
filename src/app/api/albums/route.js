@@ -2,7 +2,14 @@ import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 
-const albumsFilePath = path.join(process.cwd(), 'database', 'albums.json');
+const databaseDir = path.join(process.cwd(), 'database');
+const albumsFilePath = path.join(databaseDir, 'albums.json');
+
+async function ensureDbDir() {
+  try {
+    await fs.mkdir(databaseDir, { recursive: true });
+  } catch (e) {}
+}
 
 async function readAlbums() {
   try {
@@ -10,6 +17,7 @@ async function readAlbums() {
     return JSON.parse(data);
   } catch (error) {
     if (error.code === 'ENOENT') {
+      await ensureDbDir();
       const initial = [{ id: 'default', name: '默认画集', createdAt: new Date().toISOString() }];
       await fs.writeFile(albumsFilePath, JSON.stringify(initial, null, 2));
       return initial;
@@ -19,6 +27,7 @@ async function readAlbums() {
 }
 
 async function writeAlbums(data) {
+  await ensureDbDir();
   await fs.writeFile(albumsFilePath, JSON.stringify(data, null, 2));
 }
 

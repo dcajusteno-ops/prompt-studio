@@ -2,7 +2,14 @@ import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 
-const dataFilePath = path.join(process.cwd(), 'database', 'data.json');
+const databaseDir = path.join(process.cwd(), 'database');
+const dataFilePath = path.join(databaseDir, 'data.json');
+
+async function ensureDbDir() {
+  try {
+    await fs.mkdir(databaseDir, { recursive: true });
+  } catch (e) {}
+}
 
 async function readData() {
   try {
@@ -10,6 +17,7 @@ async function readData() {
     return JSON.parse(data);
   } catch (error) {
     if (error.code === 'ENOENT') {
+      await ensureDbDir();
       await fs.writeFile(dataFilePath, '[]');
       return [];
     }
@@ -18,6 +26,7 @@ async function readData() {
 }
 
 async function writeData(data) {
+  await ensureDbDir();
   await fs.writeFile(dataFilePath, JSON.stringify(data, null, 2));
 }
 
